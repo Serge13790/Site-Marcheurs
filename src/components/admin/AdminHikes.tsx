@@ -1,5 +1,5 @@
 import { useState, useEffect } from 'react'
-import { Plus, Search, Calendar, MapPin, X, Trash, Edit, Mountain, Upload, Loader2, ChevronLeft, ChevronRight } from 'lucide-react'
+import { Plus, Search, Calendar, MapPin, X, Trash, Edit, Mountain, Upload, Loader2, ChevronLeft, ChevronRight, FileText } from 'lucide-react'
 import { AdminLayout } from './AdminLayout'
 import { motion, AnimatePresence } from 'framer-motion'
 import { cn } from '@/lib/utils'
@@ -11,7 +11,7 @@ interface Hike {
     title: string
     date: string
     location: string
-    status: 'published' | 'draft' | 'planned'
+    status: 'published' | 'draft'
     difficulty?: 'Facile' | 'Moyen' | 'Difficile'
     duration?: string
     participants_count?: number
@@ -23,6 +23,7 @@ interface Hike {
     map_embed_code?: string
     start_time?: string
     meeting_point?: string
+    gpx_file?: string
 }
 
 interface Photo {
@@ -215,7 +216,8 @@ export function AdminHikes() {
                 elevation: currentHike.elevation,
                 map_embed_code: currentHike.map_embed_code,
                 start_time: currentHike.start_time,
-                meeting_point: currentHike.meeting_point
+                meeting_point: currentHike.meeting_point,
+                gpx_file: currentHike.gpx_file
             }
 
             if (isEditing && currentHike.id) {
@@ -338,7 +340,6 @@ export function AdminHikes() {
                         <option value="all">Tous les statuts</option>
                         <option value="published">Publié</option>
                         <option value="draft">Brouillon</option>
-                        <option value="planned">Planifié</option>
                     </select>
                 </div>
 
@@ -378,10 +379,9 @@ export function AdminHikes() {
                                     <span className={cn(
                                         "px-3 py-1 rounded-full text-xs font-medium border",
                                         hike.status === 'published' ? "bg-emerald-100 dark:bg-emerald-500/10 text-emerald-700 dark:text-emerald-400 border-emerald-200 dark:border-emerald-500/20" :
-                                            hike.status === 'draft' ? "bg-slate-100 dark:bg-slate-700/50 text-slate-600 dark:text-slate-400 border-slate-200 dark:border-slate-600" :
-                                                "bg-blue-100 dark:bg-blue-500/10 text-blue-700 dark:text-blue-400 border-blue-200 dark:border-blue-500/20"
+                                            "bg-slate-100 dark:bg-slate-700/50 text-slate-600 dark:text-slate-400 border-slate-200 dark:border-slate-600"
                                     )}>
-                                        {hike.status === 'published' ? 'Publié' : hike.status === 'draft' ? 'Brouillon' : 'Planifié'}
+                                        {hike.status === 'published' ? 'Publié' : 'Brouillon'}
                                     </span>
 
                                     <div className="flex items-center gap-2 opacity-0 group-hover:opacity-100 transition-opacity">
@@ -569,7 +569,6 @@ export function AdminHikes() {
                                                                 className="w-full bg-slate-50 dark:bg-slate-950 border border-slate-200 dark:border-white/10 rounded-lg px-2 py-2 text-sm text-slate-900 dark:text-white font-semibold"
                                                             >
                                                                 <option value="draft">Brouillon (Masqué)</option>
-                                                                <option value="planned">Planifié (Visible)</option>
                                                                 <option value="published">Publié (Visible)</option>
                                                             </select>
                                                         </div>
@@ -596,6 +595,62 @@ export function AdminHikes() {
                                                         className="w-full bg-slate-50 dark:bg-slate-950 border border-slate-200 dark:border-white/10 rounded-lg px-4 py-2 text-slate-900 dark:text-white focus:outline-none focus:border-blue-500 h-20 text-xs font-mono"
                                                         placeholder='<iframe src="..." ...></iframe>'
                                                     />
+                                                </div>
+                                                <div>
+                                                    <label className="block text-sm font-medium text-slate-700 dark:text-slate-400 mb-2">Fichier GPX (Tracé)</label>
+                                                    <div className="flex items-center gap-3">
+                                                        {currentHike.gpx_file ? (
+                                                            <div className="flex items-center gap-2 bg-blue-50 dark:bg-blue-900/20 text-blue-700 dark:text-blue-400 px-3 py-2 rounded-lg border border-blue-200 dark:border-blue-800">
+                                                                <FileText className="w-4 h-4" />
+                                                                <span className="text-sm font-mono truncate max-w-[200px]">{currentHike.gpx_file}</span>
+                                                                <button
+                                                                    type="button"
+                                                                    onClick={() => setCurrentHike({ ...currentHike, gpx_file: '' })}
+                                                                    className="ml-2 hover:bg-blue-100 dark:hover:bg-blue-800 p-1 rounded transition"
+                                                                >
+                                                                    <X className="w-3 h-3" />
+                                                                </button>
+                                                            </div>
+                                                        ) : (
+                                                            <label className={cn(
+                                                                "cursor-pointer px-4 py-2 bg-slate-100 hover:bg-slate-200 dark:bg-slate-800 dark:hover:bg-slate-700 text-slate-600 dark:text-slate-300 rounded-lg font-medium text-sm transition-colors flex items-center gap-2 border border-slate-200 dark:border-slate-700",
+                                                                uploading && "opacity-50 cursor-not-allowed"
+                                                            )}>
+                                                                {uploading ? <Loader2 className="w-4 h-4 animate-spin" /> : <Upload className="w-4 h-4" />}
+                                                                <span>{uploading ? 'Envoi...' : 'Uploader un fichier .GPX'}</span>
+                                                                <input
+                                                                    type="file"
+                                                                    className="hidden"
+                                                                    accept=".gpx"
+                                                                    onChange={async (e) => {
+                                                                        if (!e.target.files?.length) return;
+                                                                        setUploading(true);
+                                                                        try {
+                                                                            const file = e.target.files[0];
+                                                                            const fileExt = file.name.split('.').pop();
+                                                                            const fileName = `track_${Date.now()}.${fileExt}`;
+                                                                            const filePath = `${fileName}`; // bucket root or subdir? root is fine for now
+
+                                                                            const { error: uploadError } = await supabase.storage
+                                                                                .from('tracks') // Make sure bucket 'tracks' exists
+                                                                                .upload(filePath, file);
+
+                                                                            if (uploadError) throw uploadError;
+
+                                                                            setCurrentHike({ ...currentHike, gpx_file: filePath });
+                                                                        } catch (err) {
+                                                                            console.error(err);
+                                                                            alert('Erreur upload GPX');
+                                                                        } finally {
+                                                                            setUploading(false);
+                                                                        }
+                                                                    }}
+                                                                    disabled={uploading}
+                                                                />
+                                                            </label>
+                                                        )}
+                                                    </div>
+                                                    <p className="text-xs text-slate-500 mt-1">Le fichier permettra aux utilisateurs de télécharger le tracé.</p>
                                                 </div>
                                             </div>
                                         </div>

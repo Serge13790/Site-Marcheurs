@@ -40,6 +40,19 @@ export function HikeCard({ hike, index }: HikeCardProps) {
 
                 {/* Content */}
                 <div className="absolute inset-0 p-6 flex flex-col justify-end">
+                    {/* Status Badge (Based on Date) */}
+                    <div className="absolute top-6 right-6">
+                        {new Date(hike.date) >= new Date(new Date().setHours(0, 0, 0, 0)) ? (
+                            <span className="px-3 py-1 rounded-full text-xs font-bold bg-emerald-500 text-white shadow-lg shadow-emerald-900/20 backdrop-blur-md">
+                                À venir
+                            </span>
+                        ) : (
+                            <span className="px-3 py-1 rounded-full text-xs font-bold bg-slate-500/50 text-slate-200 border border-white/10 backdrop-blur-md">
+                                Passée
+                            </span>
+                        )}
+                    </div>
+
                     {/* Badges */}
                     <div className="flex gap-2 mb-4 transform translate-y-4 opacity-0 transition-all duration-300 group-hover:translate-y-0 group-hover:opacity-100">
                         <span className={cn(

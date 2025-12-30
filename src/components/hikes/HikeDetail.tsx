@@ -1,11 +1,12 @@
 import { useEffect, useState } from 'react'
 import { useParams, Link } from 'react-router-dom'
 import { motion } from 'framer-motion'
-import { Calendar, MapPin, Clock, Users, ArrowLeft, Mountain, Ruler, TrendingUp } from 'lucide-react'
+import { Calendar, MapPin, Clock, Users, ArrowLeft, Mountain, Ruler, TrendingUp, Download } from 'lucide-react'
 import { supabase } from '@/lib/supabase'
 import { cn } from '@/lib/utils'
 import { GalleryGrid } from '@/components/gallery/GalleryGrid'
 import { PhotoUpload } from './PhotoUpload'
+import { GpxMap } from './GpxMap'
 
 interface HikeDetailType {
     id: string
@@ -23,6 +24,7 @@ interface HikeDetailType {
     map_embed_code?: string
     start_time?: string
     meeting_point?: string
+    gpx_file?: string
 }
 
 export function HikeDetail() {
@@ -274,13 +276,17 @@ export function HikeDetail() {
                         </div>
 
                         {/* Map Section */}
-                        {hike.map_embed_code && (
+                        {(hike.map_embed_code || hike.gpx_file) && (
                             <div className="bg-white rounded-2xl p-8 shadow-sm border border-slate-100">
                                 <h2 className="text-2xl font-bold text-slate-800 mb-6 flex items-center gap-2">
                                     <MapPin className="w-6 h-6 text-emerald-600" />
                                     Carte & Itinéraire
                                 </h2>
-                                <div className="aspect-video w-full rounded-xl overflow-hidden bg-slate-100 border border-slate-200" dangerouslySetInnerHTML={{ __html: hike.map_embed_code }} />
+                                {hike.map_embed_code ? (
+                                    <div className="aspect-video w-full rounded-xl overflow-hidden bg-slate-100 border border-slate-200" dangerouslySetInnerHTML={{ __html: hike.map_embed_code }} />
+                                ) : hike.gpx_file ? (
+                                    <GpxMap gpxUrl={supabase.storage.from('tracks').getPublicUrl(hike.gpx_file).data.publicUrl} />
+                                ) : null}
                             </div>
                         )}
 
@@ -329,6 +335,19 @@ export function HikeDetail() {
                                     <li className="flex items-center justify-between py-2 border-b border-slate-50">
                                         <span className="text-slate-500">Dénivelé</span>
                                         <span className="font-medium text-slate-800">{hike.elevation} m</span>
+                                    </li>
+                                )}
+                                {hike.gpx_file && (
+                                    <li className="pt-2">
+                                        <a
+                                            href={supabase.storage.from('tracks').getPublicUrl(hike.gpx_file).data.publicUrl}
+                                            target="_blank"
+                                            download={`trace_${hike.date}_${hike.title.replace(/\s+/g, '_')}.gpx`}
+                                            className="w-full py-2 bg-slate-100 hover:bg-slate-200 text-slate-700 rounded-lg text-sm font-semibold transition-colors flex items-center justify-center gap-2 border border-slate-200"
+                                        >
+                                            <Download className="w-4 h-4" />
+                                            Télécharger le tracé GPX
+                                        </a>
                                     </li>
                                 )}
                                 <li className="pt-4">

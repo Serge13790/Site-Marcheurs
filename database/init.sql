@@ -109,6 +109,7 @@ CREATE TABLE public.hikes (
   participants_count INTEGER DEFAULT 0,
   cover_image_url TEXT,
   map_embed_code TEXT,
+  gpx_file TEXT,
   
   created_by UUID REFERENCES public.profiles(id),
   created_at TIMESTAMPTZ DEFAULT NOW()
@@ -165,6 +166,43 @@ CREATE POLICY "Allow public viewing" ON storage.objects FOR SELECT TO public USI
 
 -- Allow authenticated users to upload
 CREATE POLICY "Allow authenticated uploads" ON storage.objects FOR INSERT TO authenticated WITH CHECK (bucket_id = 'photos');
+
+
+-- ==========================================
+-- 3b. GPX TRACKS STORAGE
+-- ==========================================
+INSERT INTO storage.buckets (id, name, public) 
+VALUES ('tracks', 'tracks', true) 
+ON CONFLICT (id) DO NOTHING;
+
+CREATE POLICY "Public can view tracks" 
+ON storage.objects FOR SELECT 
+TO public 
+USING (bucket_id = 'tracks');
+
+CREATE POLICY "Editors/Admins can upload tracks" 
+ON storage.objects FOR INSERT 
+TO authenticated 
+WITH CHECK (
+    bucket_id = 'tracks' AND 
+    public.is_editor_or_admin()
+);
+
+CREATE POLICY "Editors/Admins can delete tracks" 
+ON storage.objects FOR DELETE 
+TO authenticated 
+USING (
+    bucket_id = 'tracks' AND 
+    public.is_editor_or_admin()
+);
+
+CREATE POLICY "Editors/Admins can update tracks" 
+ON storage.objects FOR UPDATE
+TO authenticated 
+USING (
+    bucket_id = 'tracks' AND 
+    public.is_editor_or_admin()
+);
 
 
 -- ==========================================
