@@ -27,48 +27,111 @@ interface HikeDetailType {
 
 export function HikeDetail() {
     const { id } = useParams<{ id: string }>()
-    const [hike, setHike] = useState<HikeDetailType | null>(null)
-    const [loading, setLoading] = useState(true)
-
-    const [user, setUser] = useState<any>(null)
-    const [galleryKey, setGalleryKey] = useState(0)
-
-    const handleUploadComplete = () => {
-        setGalleryKey(prev => prev + 1)
-    }
+    const [participantsCount, setParticipantsCount] = useState(0)
+    const [isParticipating, setIsParticipating] = useState(false)
+    const [actionLoading, setActionLoading] = useState(false)
 
     useEffect(() => {
-        supabase.auth.getSession().then(({ data: { session } }) => {
-            setUser(session?.user ?? null)
-        })
-
-        const { data: { subscription } } = supabase.auth.onAuthStateChange((_event, session) => {
-            setUser(session?.user ?? null)
-        })
-
-        return () => subscription.unsubscribe()
-    }, [])
-
-    useEffect(() => {
-        async function fetchHike() {
+        async function fetchHikeAndParticipants() {
             if (!id) return
             try {
-                const { data, error } = await supabase
+                // 1. Fetch Hike
+                const { data: hikeData, error: hikeError } = await supabase
                     .from('hikes')
                     .select('*')
                     .eq('id', id)
                     .single()
 
-                if (error) throw error
-                setHike(data)
+                if (hikeError) throw hikeError
+                setHike(hikeData)
+
+                // 2. Fetch Participants Count
+                const { count, error: countError } = await supabase
+                    .from('registrations')
+                    .select('*', { count: 'exact', head: true })
+                    .eq('hike_id', id)
+
+                if (!countError) {
+                    setParticipantsCount(count || 0)
+                }
+
+                // 3. Check if current user is participating
+                const { data: { session } } = await supabase.auth.getSession()
+                if (session?.user) {
+                    const { data: existingReg } = await supabase
+                        .from('registrations')
+                        .select('id')
+                        .eq('hike_id', id)
+                        .eq('user_id', session.user.id)
+                        .single()
+
+                    setIsParticipating(!!existingReg)
+                }
+
             } catch (error) {
-                console.error('Error fetching hike:', error)
+                console.error('Error fetching hike details:', error)
             } finally {
                 setLoading(false)
             }
         }
-        fetchHike()
+        fetchHikeAndParticipants()
     }, [id])
+
+    // Update participation status when user logs in/out
+    useEffect(() => {
+        if (!id || !user) return
+
+        async function checkParticipation() {
+            const { data } = await supabase
+                .from('registrations')
+                .select('id')
+                .eq('hike_id', id)
+                .eq('user_id', user.id)
+                .single()
+            setIsParticipating(!!data)
+        }
+        checkParticipation()
+    }, [id, user])
+
+    async function handleToggleParticipation() {
+        if (!user) {
+            alert("Vous devez être connecté pour participer.")
+            return
+        }
+        if (!hike) return
+
+        setActionLoading(true)
+        try {
+            if (isParticipating) {
+                // Unsubscribe
+                const { error } = await supabase
+                    .from('registrations')
+                    .delete()
+                    .eq('hike_id', hike.id)
+                    .eq('user_id', user.id)
+
+                if (error) throw error
+
+                setIsParticipating(false)
+                setParticipantsCount(prev => Math.max(0, prev - 1))
+            } else {
+                // Subscribe
+                const { error } = await supabase
+                    .from('registrations')
+                    .insert({ hike_id: hike.id, user_id: user.id })
+
+                if (error) throw error
+
+                setIsParticipating(true)
+                setParticipantsCount(prev => prev + 1)
+            }
+        } catch (error) {
+            console.error("Error toggling participation:", error)
+            alert("Une erreur est survenue lors de l'inscription.")
+        } finally {
+            setActionLoading(false)
+        }
+    }
 
     if (loading) {
         return (
@@ -159,7 +222,7 @@ export function HikeDetail() {
                                 </div>
                                 <div className="flex items-center gap-2">
                                     <Users className="w-5 h-5 text-amber-400" />
-                                    <span>{hike.participants_count || 0} participants</span>
+                                    <span>{participantsCount} participants</span>
                                 </div>
                             </div>
                         </motion.div>
@@ -247,8 +310,19 @@ export function HikeDetail() {
                                     </li>
                                 )}
                                 <li className="pt-4">
-                                    <button className="w-full py-3 rounded-xl bg-blue-600 hover:bg-blue-700 text-white font-bold transition-colors shadow-lg shadow-blue-600/20">
-                                        Je participe !
+                                    <button
+                                        onClick={handleToggleParticipation}
+                                        disabled={actionLoading || !user}
+                                        className={cn(
+                                            "w-full py-3 rounded-xl font-bold transition-all shadow-lg flex items-center justify-center gap-2",
+                                            isParticipating
+                                                ? "bg-emerald-600 hover:bg-emerald-700 text-white shadow-emerald-600/20"
+                                                : "bg-blue-600 hover:bg-blue-700 text-white shadow-blue-600/20",
+                                            (actionLoading || !user) && "opacity-50 cursor-not-allowed"
+                                        )}
+                                    >
+                                        {actionLoading && <div className="w-4 h-4 border-2 border-white/30 border-t-white rounded-full animate-spin" />}
+                                        {isParticipating ? "Je participe ! (Annuler)" : "Je participe !"}
                                     </button>
                                 </li>
                             </ul>

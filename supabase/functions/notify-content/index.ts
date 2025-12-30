@@ -42,10 +42,17 @@ serve(async (req) => {
     // CASE 1: NEW HIKE
     // ----------------------------------------------------
     // ----------------------------------------------------
-    // CASE 1: NEW HIKE
+    // CASE 1: HIKE EVENTS (INSERT OR UPDATE)
     // ----------------------------------------------------
-    if (table === "hikes" && type === "INSERT") {
-      const isPublished = record.status === "published" || record.status === "Publiée"; // Adjust status value based on your app logic
+    if (table === "hikes") {
+      const isPublished = record.status === "published" || record.status === "Publiée";
+      const wasPublished = old_record && (old_record.status === "published" || old_record.status === "Publiée");
+
+      // Skip updates that don't change status to published (avoid spamming on minor edits)
+      if (type === "UPDATE" && (!isPublished || wasPublished)) {
+        console.log("Skipped: Update on hike but not a new publication.");
+        return new Response("Skipped (minor update)", { status: 200 });
+      }
 
       // Fetch creator
       let creatorName = "L'équipe";
@@ -56,8 +63,8 @@ serve(async (req) => {
         }
       }
 
-      if (isPublished) {
-        // --- PUBLIC BROADCAST ---
+      if (isPublished && !wasPublished) {
+        // --- PUBLIC BROADCAST (New Publication) ---
         subject = `🥾 Nouvelle Rando : ${record.title}`;
         title = "Nouvelle Rando à venir !";
         message = `Une nouvelle randonnée "<strong>${record.title}</strong>" a été publiée par <strong>${creatorName}</strong>.<br>Connectez-vous pour voir les détails et vous inscrire.`;
@@ -76,15 +83,17 @@ serve(async (req) => {
             to: [{ email: senderEmail }],
             bcc: memberEmails,
             subject: subject,
-            htmlContent: null // Filled later
+            htmlContent: null
           };
           console.log(`Broadcasting published hike to ${memberEmails.length} members.`);
         }
-      } else {
-        // --- ADMIN NOTIFICATION ONLY (Draft) ---
+      } else if (type === "INSERT" && !isPublished) {
+        // --- ADMIN NOTIFICATION ONLY (New Draft) ---
         subject = `📝 Nouvelle rando (Brouillon) : ${record.title}`;
         title = "Nouvelle Rando (Brouillon)";
         message = `<strong>${creatorName}</strong> a créé une nouvelle randonnée en mode brouillon : "<strong>${record.title}</strong>".<br>Elle n'a pas encore été envoyée aux membres.`;
+      } else {
+        return new Response("Skipped (unhandled hike state)", { status: 200 });
       }
 
       detailsHtml = `
