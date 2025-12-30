@@ -37,10 +37,8 @@ serve(async (req) => {
     let title = "";
     let message = "";
     let detailsHtml = "";
+    let recipientsPayload: any = null;
 
-    // ----------------------------------------------------
-    // CASE 1: NEW HIKE
-    // ----------------------------------------------------
     // ----------------------------------------------------
     // CASE 1: HIKE EVENTS (INSERT OR UPDATE)
     // ----------------------------------------------------
@@ -80,15 +78,15 @@ serve(async (req) => {
           const memberEmails = members.map(m => ({ email: m.email }));
           recipientsPayload = {
             sender: { name: "Les Joyeux Marcheurs", email: senderEmail },
-            to: [{ email: senderEmail }],
+            to: [{ email: senderEmail }], // Send to sender (admin) as primary to hide BCC list
             bcc: memberEmails,
             subject: subject,
-            htmlContent: null
+            htmlContent: null // Will be filled below
           };
           console.log(`Broadcasting published hike to ${memberEmails.length} members.`);
         }
       } else if (type === "INSERT" && !isPublished) {
-        // --- ADMIN NOTIFICATION ONLY (New Draft) ---
+        // ... (Existing drafts logic) ...
         subject = `📝 Nouvelle rando (Brouillon) : ${record.title}`;
         title = "Nouvelle Rando (Brouillon)";
         message = `<strong>${creatorName}</strong> a créé une nouvelle randonnée en mode brouillon : "<strong>${record.title}</strong>".<br>Elle n'a pas encore été envoyée aux membres.`;
@@ -104,9 +102,10 @@ serve(async (req) => {
             `;
     }
     // ----------------------------------------------------
-    // CASE 2: NEW PHOTO
+    // CASE 2: NEW PHOTO & CASE 3 DELETED (No changes needed, they use default admin target)
     // ----------------------------------------------------
     else if (table === "photos" && type === "INSERT") {
+      // ... (Keep existing logic)
       subject = `📸 Nouvelle Photo ajoutée`;
       title = "Nouvelle Photo";
 
@@ -125,20 +124,14 @@ serve(async (req) => {
       }
 
       message = `<strong>${userName}</strong> a ajouté une photo à la randonnée "<strong>${hikeTitle}</strong>".`;
-      // We could potentially add a link to the photo if we construct the public URL, but buckets might be private?
-      // Assuming public bucket 'photos':
-      const photoUrl = `${siteUrl}/storage/v1/object/public/photos/${record.storage_path}`; // Rough guess, depends on site setup. 
-      // Better: link to the Hike page.
+      const photoUrl = `${siteUrl}/storage/v1/object/public/photos/${record.storage_path}`;
 
       detailsHtml = `
           <div class="info-row"><span class="label">Auteur :</span> <span class="value">${userName}</span></div>
           <div class="info-row"><span class="label">Rando :</span> <span class="value">${hikeTitle}</span></div>
-          <div class="info-row"><span class="label">Image :</span> <a href="${siteUrl}/admin/hikes" style="color:#2563eb">Voir dans l'admin</a></div>
+          <div class="info-row"><span class="label">Image :</span> <a href="${siteUrl}/admin/photos" style="color:#2563eb">Modérer dans l'admin</a></div>
         `;
     }
-    // ----------------------------------------------------
-    // CASE 3: DELETED PHOTO
-    // ----------------------------------------------------
     else if (table === "photos" && type === "DELETE") {
       subject = `🗑️ Photo supprimée`;
       title = "Photo Supprimée";
@@ -219,7 +212,7 @@ serve(async (req) => {
           </div>
 
           <div style="text-align: center;">
-            <a href="${siteUrl}/admin" class="btn">Accéder à l'Admin</a>
+            <a href="${siteUrl}" class="btn">Voir sur le site</a>
           </div>
         </div>
         <div class="footer">
@@ -232,6 +225,17 @@ serve(async (req) => {
     </html>
     `;
 
+    // Construct final payload
+    const finalPayload = recipientsPayload ? {
+      ...recipientsPayload,
+      htmlContent: htmlContent // Inject content
+    } : {
+      sender: { name: "Les Joyeux Marcheurs", email: senderEmail },
+      to: [{ email: adminEmail }],
+      subject: subject,
+      htmlContent: htmlContent,
+    };
+
     // Send to Admin
     const response = await fetch("https://api.brevo.com/v3/smtp/email", {
       method: "POST",
@@ -240,12 +244,7 @@ serve(async (req) => {
         "api-key": brevoApiKey,
         "content-type": "application/json",
       },
-      body: JSON.stringify({
-        sender: { name: "Les Joyeux Marcheurs", email: senderEmail },
-        to: [{ email: adminEmail }],
-        subject: subject,
-        htmlContent: htmlContent,
-      }),
+      body: JSON.stringify(finalPayload),
     });
 
     if (!response.ok) {
