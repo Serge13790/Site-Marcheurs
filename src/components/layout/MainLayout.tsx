@@ -38,7 +38,9 @@ export function MainLayout({ children }: MainLayoutProps) {
                             <>
                                 <div className="hidden md:flex flex-col items-end mr-2">
                                     <span className="text-sm font-semibold text-slate-900 dark:text-white">
-                                        {profile?.display_name || (profile?.first_name || profile?.last_name ? `${profile.first_name || ''} ${profile.last_name || ''}`.trim() : user.email?.split('@')[0])}
+                                        {(profile?.first_name || profile?.last_name)
+                                            ? `${profile.first_name || ''} ${profile.last_name || ''}`.trim()
+                                            : (profile?.display_name || user.email?.split('@')[0])}
                                     </span>
                                     <span className="text-xs text-slate-500 dark:text-slate-400 capitalize">{profile?.role === 'admin' ? 'Administrateur' : profile?.role === 'editor' ? 'Éditeur' : 'Marcheur'}</span>
                                 </div>
