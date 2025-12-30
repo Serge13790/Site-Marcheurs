@@ -1,13 +1,13 @@
 import { useEffect, useState } from 'react'
 import { motion, AnimatePresence } from 'framer-motion'
-import { Image, Trash2, MapPin, User, AlertTriangle, Loader } from 'lucide-react'
+import { Image, Trash2, MapPin, User, AlertTriangle, Loader, X } from 'lucide-react'
 import { AdminLayout } from './AdminLayout'
 import { supabase } from '@/lib/supabase'
 
 export function AdminPhotos() {
     const [photos, setPhotos] = useState<any[]>([])
     const [loading, setLoading] = useState(true)
-    const [deleteConfirm, setDeleteConfirm] = useState<string | null>(null) // ID of photo to delete
+    const [photoToDelete, setPhotoToDelete] = useState<any | null>(null)
 
     useEffect(() => {
         fetchPhotos()
@@ -23,9 +23,13 @@ export function AdminPhotos() {
                     hikes:hike_id (title)
                 `)
                 .order('created_at', { ascending: false })
+                .not('user_id', 'is', null) // Exclude migration/orphan photos
 
             if (error) throw error
-            setPhotos(data || [])
+
+            // Filter out photos where profile could not be joined (deleted users)
+            const validPhotos = (data || []).filter(p => p.profiles)
+            setPhotos(validPhotos)
         } catch (error) {
             console.error("Error fetching photos:", error)
         } finally {
@@ -56,7 +60,7 @@ export function AdminPhotos() {
 
             // UI Update
             setPhotos(photos.filter(p => p.id !== photo.id))
-            setDeleteConfirm(null)
+            setPhotoToDelete(null)
 
         } catch (error) {
             console.error("Error deleting photo:", error)
@@ -72,7 +76,7 @@ export function AdminPhotos() {
         return profile.display_name || profile.email
     }
 
-    // Reconstruction de l'URL publique (supposant que le bucket 'photos' est public)
+    // Reconstruction de l'URL publique
     const getPhotoUrl = (path: string) => {
         const { data } = supabase.storage.from('photos').getPublicUrl(path)
         return data.publicUrl
@@ -135,7 +139,7 @@ export function AdminPhotos() {
                                             <Image className="w-5 h-5" />
                                         </a>
                                         <button
-                                            onClick={() => setDeleteConfirm(photo.id)}
+                                            onClick={() => setPhotoToDelete(photo)}
                                             className="p-2 bg-red-500/80 hover:bg-red-600 text-white rounded-full backdrop-blur-sm transition-colors"
                                             title="Supprimer"
                                         >
@@ -166,34 +170,60 @@ export function AdminPhotos() {
                                         {new Date(photo.created_at).toLocaleDateString('fr-FR', { day: 'numeric', month: 'short', year: 'numeric' })}
                                     </div>
                                 </div>
-
-                                {/* Confirmation Overlay */}
-                                {deleteConfirm === photo.id && (
-                                    <div className="absolute inset-0 bg-white/95 dark:bg-slate-900/95 flex flex-col items-center justify-center p-4 text-center z-10 animate-in fade-in duration-200">
-                                        <div className="w-10 h-10 bg-red-100 dark:bg-red-900/30 text-red-600 rounded-full flex items-center justify-center mb-3">
-                                            <AlertTriangle className="w-5 h-5" />
-                                        </div>
-                                        <p className="text-sm font-bold text-slate-800 dark:text-white mb-1">Supprimer cette photo ?</p>
-                                        <p className="text-xs text-slate-500 dark:text-slate-400 mb-4">Cette action est irréversible.</p>
-                                        <div className="flex gap-2 w-full">
-                                            <button
-                                                onClick={() => setDeleteConfirm(null)}
-                                                className="flex-1 py-2 px-3 bg-slate-100 dark:bg-slate-800 text-slate-600 dark:text-slate-300 rounded-lg text-xs font-medium hover:bg-slate-200 transition-colors"
-                                            >
-                                                Annuler
-                                            </button>
-                                            <button
-                                                onClick={() => handleDelete(photo)}
-                                                className="flex-1 py-2 px-3 bg-red-600 text-white rounded-lg text-xs font-medium hover:bg-red-700 transition-colors"
-                                            >
-                                                Confirmer
-                                            </button>
-                                        </div>
-                                    </div>
-                                )}
                             </motion.div>
                         ))}
                     </AnimatePresence>
+                </div>
+            )}
+
+            {/* DELETE MODAL */}
+            {photoToDelete && (
+                <div className="fixed inset-0 z-50 flex items-center justify-center p-4">
+                    {/* Backdrop */}
+                    <div
+                        className="absolute inset-0 bg-black/60 backdrop-blur-sm"
+                        onClick={() => setPhotoToDelete(null)}
+                    ></div>
+
+                    {/* Modal Content */}
+                    <motion.div
+                        initial={{ opacity: 0, scale: 0.95 }}
+                        animate={{ opacity: 1, scale: 1 }}
+                        exit={{ opacity: 0, scale: 0.95 }}
+                        className="bg-white dark:bg-slate-900 rounded-2xl shadow-xl max-w-sm w-full relative z-10 overflow-hidden"
+                    >
+                        <div className="p-6 text-center">
+                            <div className="w-12 h-12 bg-red-100 dark:bg-red-900/30 text-red-600 rounded-full flex items-center justify-center mx-auto mb-4">
+                                <AlertTriangle className="w-6 h-6" />
+                            </div>
+                            <h3 className="text-lg font-bold text-slate-900 dark:text-white mb-2">Supprimer cette photo ?</h3>
+                            <p className="text-sm text-slate-500 dark:text-slate-400 mb-6">
+                                Cette action est irréversible et retirera la photo de la galerie publique.
+                            </p>
+
+                            <div className="flex gap-3">
+                                <button
+                                    onClick={() => setPhotoToDelete(null)}
+                                    className="flex-1 py-2.5 px-4 bg-slate-100 dark:bg-slate-800 text-slate-700 dark:text-slate-300 font-medium rounded-xl hover:bg-slate-200 dark:hover:bg-slate-700 transition-colors"
+                                >
+                                    Annuler
+                                </button>
+                                <button
+                                    onClick={() => handleDelete(photoToDelete)}
+                                    className="flex-1 py-2.5 px-4 bg-red-600 text-white font-medium rounded-xl hover:bg-red-700 transition-colors shadow-lg shadow-red-600/20"
+                                >
+                                    Supprimer
+                                </button>
+                            </div>
+                        </div>
+                        <div className="bg-slate-50 dark:bg-slate-950/50 p-4 border-t border-slate-100 dark:border-slate-800 flex justify-center">
+                            <img
+                                src={getPhotoUrl(photoToDelete.storage_path)}
+                                alt="Thumbnail"
+                                className="h-16 w-16 object-cover rounded-lg border border-slate-200 dark:border-slate-700 opacity-60"
+                            />
+                        </div>
+                    </motion.div>
                 </div>
             )}
         </AdminLayout>

@@ -43,6 +43,7 @@ export function AdminLayout({ children }: AdminLayoutProps) {
         { icon: LayoutDashboard, label: 'Tableau de bord', path: '/admin' },
         { icon: Map, label: 'Randonnées', path: '/admin/hikes' },
         ...(profile?.role === 'admin' ? [{ icon: Users, label: 'Membres', path: '/admin/users' }] : []),
+        { icon: Image, label: 'Photos', path: '/admin/photos' },
     ]
 
     return (
