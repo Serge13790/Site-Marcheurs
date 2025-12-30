@@ -40,80 +40,108 @@ serve(async (req) => {
     let recipientsPayload: any = null;
 
     // ----------------------------------------------------
-    // CASE 1: HIKE EVENTS (INSERT OR UPDATE)
+    // CASE 1: HIKE EVENTS (INSERT OR UPDATE OR DELETE)
     // ----------------------------------------------------
     if (table === "hikes") {
-      // Detect state change
-      const isPublished = record.status === "published" || record.status === "Publiée";
-      const wasPublished = old_record && (old_record.status === "published" || old_record.status === "Publiée");
-      const isNewPublication = isPublished && !wasPublished;
-      const isUnpublished = !isPublished && wasPublished;
 
-      // Fetch creator
-      let creatorName = "L'équipe";
-      if (record.created_by) {
-        const { data: profile } = await supabase.from("profiles").select("first_name, last_name, email, display_name").eq("id", record.created_by).single();
-        if (profile) {
-          creatorName = [profile.first_name, profile.last_name].filter(Boolean).join(" ") || profile.display_name || profile.email;
-        }
-      }
+      if (type === "DELETE") {
+        // --- CASE E: DELETION (Crucial: Admin Alert) ---
+        // old_record is guaranteed on DELETE in Supabase Webhooks
+        subject = `🗑️ Rando SUPPRIMÉE : ${old_record?.title || 'Titre inconnu'}`;
+        title = "Randonnée Supprimée";
 
-      if (isNewPublication) {
-        // --- CASE A: PUBLIC BROADCAST (New Publication) ---
-        subject = `🥾 Nouvelle Rando : ${record.title}`;
-        title = "Nouvelle Rando à venir !";
-        message = `Une nouvelle randonnée "<strong>${record.title}</strong>" a été publiée par <strong>${creatorName}</strong>.<br>Connectez-vous pour voir les détails et vous inscrire.`;
-
-        // Fetch ALL approved members for broadcast
-        console.log("Fetching approved members for broadcast...");
-        const { data: members, error: membersError } = await supabase
-          .from("profiles")
-          .select("email, role, approved")
-          .eq("approved", true)
-          .not("email", "is", null);
-
-        if (membersError) {
-          console.error("Error fetching members:", membersError);
-        } else if (members) {
-          console.log(`Found ${members.length} approved members.`);
-          // Debug: Log all found emails to check for missing ones
-          console.log("Member emails found:", members.map(m => `${m.email} (${m.role})`).join(", "));
-
-          const memberEmails = members.map(m => ({ email: m.email }));
-          recipientsPayload = {
-            sender: { name: "Les Joyeux Marcheurs", email: senderEmail },
-            to: [{ email: senderEmail }], // Send to sender (admin) as primary to hide BCC list
-            bcc: memberEmails,
-            subject: subject,
-            htmlContent: null // Will be filled below
-          };
-        }
-      } else if (isUnpublished) {
-        // --- CASE B: ADMIN NOTICE (Published -> Draft) ---
-        subject = `⚠️ Rando Dépubliée : ${record.title}`;
-        title = "Rando Remise en Brouillon";
-        message = `La randonnée "<strong>${record.title}</strong>" a été retirée de la publication (remise en brouillon) par <strong>${creatorName}</strong>.`;
-
-      } else if (isPublished && wasPublished) {
-        // --- CASE C: ADMIN NOTICE (Published -> Published) ---
-        subject = `✏️ Mise à jour Rando (Publiée) : ${record.title}`;
-        title = "Randonnée Mise à Jour";
-        message = `La randonnée "<strong>${record.title}</strong>" (déjà publiée) a été modifiée par <strong>${creatorName}</strong>.`;
+        // Try to fetch deleter if possible, but usually not in payload. We just say "supprimée".
+        message = `La randonnée "<strong>${old_record?.title}</strong>" a été <strong>définitivement supprimée</strong> de la base de données.`;
+        detailsHtml = `
+                <div class="info-row"><span class="label">Titre :</span> <span class="value">${old_record?.title}</span></div>
+                <div class="info-row"><span class="label">Date :</span> <span class="value">${old_record?.date || '-'}</span></div>
+                <div class="info-row"><span class="label">Statut :</span> <span class="value">${old_record?.status} (Avant suppression)</span></div>
+             `;
 
       } else {
-        // --- CASE D: ADMIN NOTICE (Draft -> Draft) ---
-        subject = `📝 Mise à jour Rando (Brouillon) : ${record.title}`;
-        title = "Randonnée Modifiée (Brouillon)";
-        message = `<strong>${creatorName}</strong> a modifié le brouillon : "<strong>${record.title}</strong>".`;
-      }
+        // INSERT OR UPDATE
+        // Detect state change
+        const isPublished = record.status === "published" || record.status === "Publiée";
+        const wasPublished = old_record && (old_record.status === "published" || old_record.status === "Publiée");
+        const isNewPublication = isPublished && !wasPublished;
+        const isUnpublished = !isPublished && wasPublished;
 
-      detailsHtml = `
-            <div class="info-row"><span class="label">Titre :</span> <span class="value">${record.title}</span></div>
-            <div class="info-row"><span class="label">Statut :</span> <span class="value">${record.status} ${isNewPublication ? '(NOUVEAU)' : ''}</span></div>
-            <div class="info-row"><span class="label">Date :</span> <span class="value">${record.date || 'Non définie'}</span></div>
-            <div class="info-row"><span class="label">Lieu :</span> <span class="value">${record.location || '-'}</span></div>
-            <div class="info-row"><span class="label">Action :</span> <span class="value">${type}</span></div>
-            `;
+        // Fetch creator
+        let creatorName = "L'équipe";
+        if (record.created_by) {
+          const { data: profile } = await supabase.from("profiles").select("first_name, last_name, email, display_name").eq("id", record.created_by).single();
+          if (profile) {
+            creatorName = [profile.first_name, profile.last_name].filter(Boolean).join(" ") || profile.display_name || profile.email;
+          }
+        }
+
+        if (isNewPublication) {
+          // Check date (avoid spam for past hikes)
+          const today = new Date().toISOString().split('T')[0];
+          const hikeDate = record.date || today;
+
+          if (hikeDate < today) {
+            console.log(`Skipped broadcast: Hike ${record.title} is published but date (${hikeDate}) is in the past.`);
+            return new Response("Skipped (past hike published)", { status: 200 });
+          }
+
+          // --- CASE A: PUBLIC BROADCAST (New Publication) ---
+          subject = `🥾 Nouvelle Rando : ${record.title}`;
+          title = "Nouvelle Rando à venir !";
+          message = `Une nouvelle randonnée "<strong>${record.title}</strong>" a été publiée par <strong>${creatorName}</strong>.<br>Connectez-vous pour voir les détails et vous inscrire.`;
+
+          // Fetch ALL approved members for broadcast
+          console.log("Fetching approved members for broadcast...");
+          const { data: members, error: membersError } = await supabase
+            .from("profiles")
+            .select("email, role, approved")
+            .eq("approved", true)
+            .not("email", "is", null);
+
+          if (membersError) {
+            console.error("Error fetching members:", membersError);
+          } else if (members) {
+            console.log(`Found ${members.length} approved members.`);
+            // Debug: Log all found emails to check for missing ones
+            console.log("Member emails found:", members.map(m => `${m.email} (${m.role})`).join(", "));
+
+            const memberEmails = members.map(m => ({ email: m.email }));
+            recipientsPayload = {
+              sender: { name: "Les Joyeux Marcheurs", email: senderEmail },
+              to: [{ email: senderEmail }], // Send to sender (admin) as primary to hide BCC list
+              bcc: memberEmails,
+              subject: subject,
+              htmlContent: null // Will be filled below
+            };
+          }
+        } else if (isUnpublished) {
+          // --- CASE B: ADMIN NOTICE (Published -> Draft) ---
+          subject = `⚠️ Rando Dépubliée : ${record.title}`;
+          title = "Rando Remise en Brouillon";
+          message = `La randonnée "<strong>${record.title}</strong>" a été retirée de la publication (remise en brouillon) par <strong>${creatorName}</strong>.`;
+
+        } else if (isPublished && wasPublished) {
+          // --- CASE C: ADMIN NOTICE (Published -> Published) ---
+          // Avoid spam if just one field changed? For now notify on any update to published hike.
+          subject = `✏️ Mise à jour Rando (Publiée) : ${record.title}`;
+          title = "Randonnée Mise à Jour";
+          message = `La randonnée "<strong>${record.title}</strong>" (déjà publiée) a été modifiée par <strong>${creatorName}</strong>.`;
+
+        } else {
+          // --- CASE D: ADMIN NOTICE (Draft -> Draft) ---
+          subject = `📝 Mise à jour Rando (Brouillon) : ${record.title}`;
+          title = "Randonnée Modifiée (Brouillon)";
+          message = `<strong>${creatorName}</strong> a modifié le brouillon : "<strong>${record.title}</strong>".`;
+        }
+
+        detailsHtml = `
+                    <div class="info-row"><span class="label">Titre :</span> <span class="value">${record.title}</span></div>
+                    <div class="info-row"><span class="label">Statut :</span> <span class="value">${record.status} ${isNewPublication ? '(NOUVEAU)' : ''}</span></div>
+                    <div class="info-row"><span class="label">Date :</span> <span class="value">${record.date || 'Non définie'}</span></div>
+                    <div class="info-row"><span class="label">Lieu :</span> <span class="value">${record.location || '-'}</span></div>
+                    <div class="info-row"><span class="label">Action :</span> <span class="value">${type}</span></div>
+                    `;
+      }
     }
     // ----------------------------------------------------
     // CASE 2: NEW PHOTO & CASE 3 DELETED (No changes needed, they use default admin target)
