@@ -31,6 +31,28 @@ export function HikeDetail() {
     const [isParticipating, setIsParticipating] = useState(false)
     const [actionLoading, setActionLoading] = useState(false)
 
+    const [hike, setHike] = useState<HikeDetailType | null>(null)
+    const [loading, setLoading] = useState(true)
+
+    const [user, setUser] = useState<any>(null)
+    const [galleryKey, setGalleryKey] = useState(0)
+
+    const handleUploadComplete = () => {
+        setGalleryKey(prev => prev + 1)
+    }
+
+    useEffect(() => {
+        supabase.auth.getSession().then(({ data: { session } }) => {
+            setUser(session?.user ?? null)
+        })
+
+        const { data: { subscription } } = supabase.auth.onAuthStateChange((_event, session) => {
+            setUser(session?.user ?? null)
+        })
+
+        return () => subscription.unsubscribe()
+    }, [])
+
     useEffect(() => {
         async function fetchHikeAndParticipants() {
             if (!id) return
