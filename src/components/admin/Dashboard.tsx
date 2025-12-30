@@ -144,6 +144,10 @@ export function Dashboard() {
                             <Calendar className="w-4 h-4" />
                             <span className="group-hover:translate-x-0.5 transition-transform">Gérer les randos</span>
                         </Link>
+                        <Link to="/admin/photos" className="w-full py-3 px-4 bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-700 text-slate-700 dark:text-slate-200 hover:bg-slate-50 dark:hover:bg-slate-700 hover:text-slate-900 dark:hover:text-white rounded-xl font-medium transition-all flex items-center justify-center gap-2">
+                            <Image className="w-4 h-4" />
+                            Photos
+                        </Link>
                         <Link to="/admin/users" className="w-full py-3 px-4 bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-700 text-slate-700 dark:text-slate-200 hover:bg-slate-50 dark:hover:bg-slate-700 hover:text-slate-900 dark:hover:text-white rounded-xl font-medium transition-all flex items-center justify-center gap-2">
                             <Users className="w-4 h-4" />
                             Valider les inscrits

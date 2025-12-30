@@ -6,6 +6,7 @@ import App from './App.tsx'
 import { Dashboard } from './components/admin/Dashboard.tsx'
 import { AdminHikes } from './components/admin/AdminHikes.tsx'
 import { AdminUsers } from './components/admin/AdminUsers.tsx'
+import { AdminPhotos } from './components/admin/AdminPhotos.tsx'
 import { AuthProvider } from './contexts/AuthContext.tsx'
 import { HikeDetail } from './components/hikes/HikeDetail.tsx'
 import { LegalNotice } from './pages/LegalNotice.tsx'
@@ -23,6 +24,7 @@ createRoot(document.getElementById('root')!).render(
             <Route path="/admin" element={<Dashboard />} />
             <Route path="/admin/hikes" element={<AdminHikes />} />
             <Route path="/admin/users" element={<AdminUsers />} />
+            <Route path="/admin/photos" element={<AdminPhotos />} />
             <Route path="/mentions-legales" element={<LegalNotice />} />
           </Routes>
         </BrowserRouter>
