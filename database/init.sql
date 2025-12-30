@@ -30,16 +30,43 @@ CREATE TABLE public.profiles (
 -- Enable RLS
 ALTER TABLE public.profiles ENABLE ROW LEVEL SECURITY;
 
+-- Helper Functions to bypass RLS recursion
+CREATE OR REPLACE FUNCTION public.is_admin()
+RETURNS BOOLEAN AS $$
+DECLARE
+  v_role TEXT;
+  v_approved BOOLEAN;
+BEGIN
+  SELECT role, approved INTO v_role, v_approved
+  FROM public.profiles
+  WHERE id = auth.uid();
+  
+  RETURN v_role = 'admin' AND v_approved = TRUE;
+END;
+$$ LANGUAGE plpgsql SECURITY DEFINER;
+
+CREATE OR REPLACE FUNCTION public.is_editor_or_admin()
+RETURNS BOOLEAN AS $$
+DECLARE
+  v_role TEXT;
+  v_approved BOOLEAN;
+BEGIN
+  SELECT role, approved INTO v_role, v_approved
+  FROM public.profiles
+  WHERE id = auth.uid();
+  
+  RETURN (v_role = 'admin' OR v_role = 'editor') AND v_approved = TRUE;
+END;
+$$ LANGUAGE plpgsql SECURITY DEFINER;
+
+
 -- Policies for profiles
--- Public read for own profile
 CREATE POLICY "Users can read own profile" ON public.profiles FOR SELECT USING (auth.uid() = id);
 
--- Users can update their own profile
 CREATE POLICY "Users can update their own profile" ON public.profiles FOR UPDATE USING (auth.uid() = id);
 
--- Admins can read/update all profiles
 CREATE POLICY "Admins can manage all profiles" ON public.profiles USING (
-  EXISTS (SELECT 1 FROM public.profiles WHERE id = auth.uid() AND role = 'admin' AND approved = TRUE)
+  public.is_admin()
 );
 
 -- Trigger to create profile on signup
@@ -69,16 +96,16 @@ CREATE TABLE public.hikes (
   -- Logistics
   location TEXT,
   meeting_point TEXT,
-  start_time TEXT, -- e.g. "08:00"
+  start_time TEXT,
   
   -- Stats
-  distance NUMERIC, -- in km
-  elevation INTEGER, -- in meters
+  distance NUMERIC,
+  elevation INTEGER,
   difficulty TEXT,
   duration TEXT,
   
   -- Meta
-  status TEXT DEFAULT 'draft', -- 'draft', 'planned', 'published'
+  status TEXT DEFAULT 'draft',
   participants_count INTEGER DEFAULT 0,
   cover_image_url TEXT,
   map_embed_code TEXT,
@@ -89,44 +116,51 @@ CREATE TABLE public.hikes (
 
 ALTER TABLE public.hikes ENABLE ROW LEVEL SECURITY;
 
--- Only approved users can view hikes
 CREATE POLICY "Approved users can view hikes" ON public.hikes FOR SELECT USING (
   EXISTS (SELECT 1 FROM public.profiles WHERE id = auth.uid() AND approved = TRUE)
 );
 
--- Only Admin/Editor can create/edit hikes
 CREATE POLICY "Editors/Admins can manage hikes" ON public.hikes USING (
-  EXISTS (SELECT 1 FROM public.profiles WHERE id = auth.uid() AND role IN ('admin', 'editor') AND approved = TRUE)
+  public.is_editor_or_admin()
 );
 
 
 -- ==========================================
--- 3. PHOTOS
+-- 3. PHOTOS & STORAGE
 -- ==========================================
 CREATE TABLE public.photos (
   id UUID DEFAULT uuid_generate_v4() PRIMARY KEY,
   hike_id UUID REFERENCES public.hikes(id) ON DELETE CASCADE,
   user_id UUID REFERENCES public.profiles(id),
-  storage_path TEXT NOT NULL, -- Path in Supabase Storage bucket
+  storage_path TEXT NOT NULL,
   caption TEXT,
   created_at TIMESTAMPTZ DEFAULT NOW()
 );
 
 ALTER TABLE public.photos ENABLE ROW LEVEL SECURITY;
 
--- Approved users can view photos
 CREATE POLICY "Approved users can view photos" ON public.photos FOR SELECT USING (
   EXISTS (SELECT 1 FROM public.profiles WHERE id = auth.uid() AND approved = TRUE)
 );
 
--- Users can upload (insert) photos
 CREATE POLICY "Users can upload photos" ON public.photos FOR INSERT WITH CHECK (
   auth.uid() = user_id AND 
   EXISTS (SELECT 1 FROM public.profiles WHERE id = auth.uid() AND approved = TRUE)
 );
 
--- Users can delete their own photos, Admins can delete any
 CREATE POLICY "Users manage own photos" ON public.photos FOR DELETE USING (
   auth.uid() = user_id OR
-  EXISTS (SELECT 1 FROM public.profiles WHERE id = auth.uid() AND role = 'admin' AND approved = TRUE)
+  public.is_admin()
 );
+
+-- Storage Bucket Setup
+INSERT INTO storage.buckets (id, name, public) 
+VALUES ('photos', 'photos', true) 
+ON CONFLICT (id) DO NOTHING;
+
+-- Storage Policies
+-- Allow public viewing of photos (necessary for img tags usually, or use authenticated URL signing)
+CREATE POLICY "Allow public viewing" ON storage.objects FOR SELECT TO public USING (bucket_id = 'photos');
+
+-- Allow authenticated users to upload
+CREATE POLICY "Allow authenticated uploads" ON storage.objects FOR INSERT TO authenticated WITH CHECK (bucket_id = 'photos');
