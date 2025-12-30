@@ -130,14 +130,10 @@ export function AdminUsers() {
     return (
         <AdminLayout>
             <div className="max-w-6xl mx-auto">
-                <motion.div
-                    initial={{ opacity: 0, y: 20 }}
-                    animate={{ opacity: 1, y: 0 }}
-                    className="mb-8"
-                >
+                <div className="mb-8">
                     <h1 className="text-3xl font-bold text-slate-800 dark:text-white mb-2 font-serif">Gestion des Utilisateurs</h1>
                     <p className="text-slate-600 dark:text-slate-400">Validez les nouveaux comptes et gérez les rôles.</p>
-                </motion.div>
+                </div>
 
                 {/* Stats Cards */}
                 <div className="grid grid-cols-1 md:grid-cols-3 gap-6 mb-8">

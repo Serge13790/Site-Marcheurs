@@ -305,7 +305,7 @@ export function AdminHikes() {
         <AdminLayout>
             <div className="flex flex-col md:flex-row md:items-center justify-between gap-4 mb-8">
                 <div>
-                    <h1 className="text-3xl font-bold text-slate-900 dark:text-white mb-2">Gestion des Randonnées</h1>
+                    <h1 className="text-3xl font-bold text-slate-900 dark:text-white mb-2 font-serif">Gestion des Randonnées</h1>
                     <p className="text-slate-500 dark:text-slate-400">Gérez le planning et les détails des sorties.</p>
                 </div>
                 <button
