@@ -22,8 +22,46 @@ export function ProfileCompletion() {
         setFormData({ ...formData, [e.target.name]: e.target.value })
     }
 
+    const validateForm = () => {
+        const errors: string[] = []
+
+        // Postal Code: 5 digits
+        if (!/^\d{5}$/.test(formData.postal_code)) {
+            errors.push("Le code postal doit contenir exactement 5 chiffres.")
+        }
+
+        // City: No numbers (basic check, allows hyphen/space/apostrophe)
+        if (/\d/.test(formData.city)) {
+            errors.push("La ville ne doit pas contenir de chiffres.")
+        }
+
+        // Mobile Phone: 10 digits (French format mostly, but let's stick to 10 digits clean)
+        // We clean spaces/dots/dashes before check
+        const cleanMobile = formData.phone_mobile.replace(/[\s.-]/g, '')
+        if (!/^\d{10}$/.test(cleanMobile)) {
+            errors.push("Le numéro de portable doit contenir 10 chiffres.")
+        }
+
+        // Fixed Phone: 10 digits if provided
+        if (formData.phone_fixed) {
+            const cleanFixed = formData.phone_fixed.replace(/[\s.-]/g, '')
+            if (!/^\d{10}$/.test(cleanFixed)) {
+                errors.push("Le numéro fixe doit contenir 10 chiffres.")
+            }
+        }
+
+        return errors
+    }
+
     const handleSubmit = async (e: React.FormEvent) => {
         e.preventDefault()
+
+        const errors = validateForm()
+        if (errors.length > 0) {
+            alert(errors.join('\n'))
+            return
+        }
+
         setLoading(true)
         try {
             const { error } = await supabase
@@ -31,12 +69,11 @@ export function ProfileCompletion() {
                 .update({
                     ...formData,
                     is_profile_completed: true,
-                    // If previously rejected, maybe reset to pending? For now just update info.
                 })
                 .eq('id', user?.id)
 
             if (error) throw error
-            window.location.reload() // Reload to refresh auth state/navigation
+            window.location.reload()
         } catch (error) {
             console.error('Error updating profile:', error)
             alert("Erreur lors de la mise à jour du profil.")
@@ -132,6 +169,7 @@ export function ProfileCompletion() {
                                         value={formData.postal_code}
                                         onChange={handleChange}
                                         className="appearance-none relative block w-full px-3 py-2 border border-slate-300 placeholder-slate-500 text-slate-900 rounded-lg focus:outline-none focus:ring-blue-500 focus:border-blue-500 sm:text-sm"
+                                        placeholder="13000"
                                     />
                                 </div>
                                 <div>
@@ -143,6 +181,7 @@ export function ProfileCompletion() {
                                         value={formData.city}
                                         onChange={handleChange}
                                         className="appearance-none relative block w-full px-3 py-2 border border-slate-300 placeholder-slate-500 text-slate-900 rounded-lg focus:outline-none focus:ring-blue-500 focus:border-blue-500 sm:text-sm"
+                                        placeholder="Aix-en-Provence"
                                     />
                                 </div>
                             </div>

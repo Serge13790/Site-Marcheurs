@@ -41,6 +41,19 @@ function AppContent() {
     )
   }
 
+  // Logged in but profile missing (should not happen usually)
+  if (user && !profile) {
+    return (
+      <MainLayout>
+        <div className="text-center py-20 font-serif text-slate-800">
+          <h2 className="text-xl font-bold mb-4">Erreur de profil</h2>
+          <p>Impossible de charger votre profil. Veuillez réessayer ou contacter l'admin.</p>
+          <button onClick={() => window.location.reload()} className="mt-4 text-blue-600 hover:underline">Rafraîchir</button>
+        </div>
+      </MainLayout>
+    )
+  }
+
   // Approved -> Private Content
   return (
     <MainLayout>
