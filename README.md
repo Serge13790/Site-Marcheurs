@@ -47,6 +47,7 @@ npm run dev
 *   **profiles** : Extension des utilisateurs (Auth). Contient rôles, infos personnelles et statut d'approbation.
 *   **hikes** : Randonnées (titre, date, lieu, difficulté...).
 *   **photos** : Galerie photo liée aux utilisateurs et aux randos.
+*   **registrations** : Inscriptions des membres aux randonnées (compteur auto via triggers).
 
 ### Edge Functions
 *   **notify-admin** : Notifie l'admin à chaque inscription.

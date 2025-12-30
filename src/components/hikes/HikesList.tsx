@@ -20,9 +20,7 @@ export function HikesList() {
             if (error) {
                 console.error('Error fetching hikes:', error)
             } else if (data) {
-                // Map Supabase data to compatible Hike interface if needed
-                // Currently assuming db columns match Hike interface roughly or we adapt here
-                // Note: DB has 'cover_image_url' but interface has 'image'
+                // Map Supabase data to compatible Hike interface
                 const formattedHikes: Hike[] = data
                     .filter((h: any) => h.status !== 'draft') // Hide drafts from public view
                     .map((h: any) => ({

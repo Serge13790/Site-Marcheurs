@@ -162,5 +162,61 @@ ON CONFLICT (id) DO NOTHING;
 -- Allow public viewing of photos (necessary for img tags usually, or use authenticated URL signing)
 CREATE POLICY "Allow public viewing" ON storage.objects FOR SELECT TO public USING (bucket_id = 'photos');
 
+
 -- Allow authenticated users to upload
 CREATE POLICY "Allow authenticated uploads" ON storage.objects FOR INSERT TO authenticated WITH CHECK (bucket_id = 'photos');
+
+
+-- ==========================================
+-- 4. REGISTRATIONS & TRIGGERS
+-- ==========================================
+
+-- Create registrations table to track hike participants
+CREATE TABLE IF NOT EXISTS public.registrations (
+    id UUID DEFAULT gen_random_uuid() PRIMARY KEY,
+    hike_id UUID REFERENCES public.hikes(id) ON DELETE CASCADE,
+    user_id UUID REFERENCES public.profiles(id) ON DELETE CASCADE,
+    created_at TIMESTAMPTZ DEFAULT NOW(),
+    UNIQUE(hike_id, user_id)
+);
+
+-- Enable RLS (Row Level Security)
+ALTER TABLE public.registrations ENABLE ROW LEVEL SECURITY;
+
+-- Policies
+-- 1. Everyone can see who is registered (or at least the count)
+CREATE POLICY "Registrations are viewable by everyone" ON public.registrations
+    FOR SELECT USING (true);
+
+-- 2. Authenticated users can register themselves
+CREATE POLICY "Users can register themselves" ON public.registrations
+    FOR INSERT WITH CHECK (auth.uid() = user_id);
+
+-- 3. Users can cancel their own registration
+CREATE POLICY "Users can unregister themselves" ON public.registrations
+    FOR DELETE USING (auth.uid() = user_id);
+
+-- Function to update the participants_count in hikes table
+CREATE OR REPLACE FUNCTION update_participants_count()
+RETURNS TRIGGER AS $$
+BEGIN
+    IF (TG_OP = 'INSERT') THEN
+        UPDATE public.hikes
+        SET participants_count = participants_count + 1
+        WHERE id = NEW.hike_id;
+        RETURN NEW;
+    ELSIF (TG_OP = 'DELETE') THEN
+        UPDATE public.hikes
+        SET participants_count = participants_count - 1
+        WHERE id = OLD.hike_id;
+        RETURN OLD;
+    END IF;
+    RETURN NULL;
+END;
+$$ LANGUAGE plpgsql;
+
+-- Trigger to call the function on INSERT or DELETE in registrations
+CREATE TRIGGER trigger_update_participants_count
+AFTER INSERT OR DELETE ON public.registrations
+FOR EACH ROW
+EXECUTE FUNCTION update_participants_count();

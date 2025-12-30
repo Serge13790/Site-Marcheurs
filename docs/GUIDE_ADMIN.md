@@ -21,7 +21,7 @@ La page d'accueil de l'admin vous donne une vue d'ensemble :
     *   **Statut Brouillon** : La rando est invisible pour les membres, seul l'admin reçoit une notif.
     *   **Statut Publiée** : La rando est visible et **tous les membres reçoivent automatiquement un email** pour les prévenir.
 *   **Modification** : Mettez à jour les infos (heure, lieu, map GPX...).
-*   **Participants** : Le nombre de participants inscrits est visible sur la fiche de la randonnée. Les membres peuvent s'inscrire ou se désinscrire eux-mêmes via le bouton "Je participe".
+*   **Participants** : Le nombre de participants est mis à jour automatiquement en temps réel. Les membres gèrent eux-mêmes leur inscription via le bouton "Je participe".
 
 ## 5. Modération des Photos
 *   Rendez-vous dans la section **Photos**.
