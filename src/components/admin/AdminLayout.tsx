@@ -1,6 +1,6 @@
 import { useState, useEffect } from 'react'
 import { motion } from 'framer-motion'
-import { LayoutDashboard, Map, Users, LogOut, Menu, X, Mountain, Loader2, Sun, Moon, Monitor, ArrowLeft } from 'lucide-react'
+import { LayoutDashboard, Map, Users, LogOut, Menu, X, Mountain, Loader2, Sun, Moon, Monitor, ArrowLeft, Image } from 'lucide-react'
 import { cn } from '@/lib/utils'
 import { useNavigate, useLocation } from 'react-router-dom'
 import { useAuth } from '@/contexts/AuthContext'

@@ -1,6 +1,6 @@
 import { useEffect, useState } from 'react'
 import { motion, AnimatePresence } from 'framer-motion'
-import { Image, Trash2, MapPin, User, AlertTriangle, Loader, X } from 'lucide-react'
+import { Image, Trash2, MapPin, User, AlertTriangle, Loader } from 'lucide-react'
 import { AdminLayout } from './AdminLayout'
 import { supabase } from '@/lib/supabase'
 
