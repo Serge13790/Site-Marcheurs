@@ -1,21 +1,21 @@
 import { serve } from "https://deno.land/std@0.168.0/http/server.ts";
+import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
 
-const brevoApiKey = Deno.env.get("BREVO_API_KEY")?.trim();
-const adminEmail = Deno.env.get("ADMIN_EMAIL")?.trim();
+const resendApiKey = Deno.env.get("RESEND_API_KEY");
+const resendFromEmail = Deno.env.get("RESEND_FROM_EMAIL") || "no-reply@nazarian.ovh";
+const resendFromName = Deno.env.get("RESEND_FROM_NAME") || "Les Joyeux Marcheurs";
 const siteUrl = Deno.env.get("SITE_URL")?.replace(/\/$/, "") ?? "http://localhost:5173";
+const supabaseUrl = Deno.env.get("SUPABASE_URL");
+const supabaseServiceKey = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY");
+
+const supabase = (supabaseUrl && supabaseServiceKey)
+  ? createClient(supabaseUrl, supabaseServiceKey)
+  : null;
 
 serve(async (req) => {
-  if (req.method !== "POST") {
-    return new Response("Method Not Allowed", { status: 405 });
-  }
+  if (req.method !== "POST") return new Response("Method Not Allowed", { status: 405 });
 
   try {
-    // Debug: Check config (without leaking full key)
-    console.log("Config Check:");
-    console.log("Admin Email:", adminEmail);
-    console.log("Brevo Key Length:", brevoApiKey?.length);
-    console.log("Brevo Key Start:", brevoApiKey?.substring(0, 5));
-
     const payload = await req.json();
     const record = payload.record;
     const oldRecord = payload.old_record;
@@ -26,25 +26,33 @@ serve(async (req) => {
     const wasCompleted = oldRecord?.is_profile_completed === true;
     const isCompleted = record.is_profile_completed === true;
 
-    console.log(`Status Check: Old=${oldRecord?.is_profile_completed}, New=${record.is_profile_completed}`);
+    if (!isCompleted) return new Response("Skipped (Not completed)", { status: 200 });
+    if (wasCompleted && isCompleted) return new Response("Skipped (Already completed)", { status: 200 });
 
-    if (!isCompleted) {
-      console.log("Skipped: Profile not completed.");
-      return new Response("Skipped (Not completed)", { status: 200 });
+    if (!resendApiKey) {
+      console.error("Config Error: RESEND_API_KEY missing");
+      return new Response("Config Error: RESEND_API_KEY missing", { status: 500 });
     }
 
-    if (wasCompleted && isCompleted) {
-      console.log("Skipped: Profile ALREADY completed.");
-      return new Response("Skipped (Already completed)", { status: 200 });
+    if (!supabase) {
+      console.error("Config Error: Supabase credentials missing");
+      return new Response("Config Error: DB access required", { status: 500 });
     }
 
-    if (!adminEmail) {
-      console.error("Config Error: ADMIN_EMAIL missing");
-      return new Response("Config Error: ADMIN_EMAIL missing", { status: 500 });
+    // Dynamic Admin Fetching
+    const { data: admins, error: adminError } = await supabase
+      .from("profiles")
+      .select("email")
+      .eq("role", "admin")
+      .not("email", "is", null);
+
+    if (adminError || !admins || admins.length === 0) {
+      console.error("Error fetching admins or no admins found:", adminError);
+      return new Response("No admins found to notify", { status: 500 });
     }
 
-    const fullName = [record.first_name, record.last_name].filter(Boolean).join(" ");
-    const displayName = fullName || record.display_name || record.email;
+    const adminEmails = admins.map(a => a.email);
+    console.log(`Notifying ${adminEmails.length} admins: ${adminEmails.join(", ")}`);
 
     const htmlContent = `
     <!DOCTYPE html>
@@ -61,7 +69,6 @@ serve(async (req) => {
           background-position: center; 
           height: 160px; 
           position: relative; 
-          background-color: #2563eb; 
         }
         .header-overlay { background: linear-gradient(to bottom, rgba(0,0,0,0.2), rgba(0,0,0,0.6)); position: absolute; inset: 0; }
         .header-text { position: absolute; bottom: 20px; left: 30px; color: white; font-size: 24px; font-weight: bold; text-shadow: 0 2px 4px rgba(0,0,0,0.3); }
@@ -81,12 +88,12 @@ serve(async (req) => {
       <div class="container">
         <div class="header">
           <div class="header-overlay"></div>
-          <div class="header-text">Les Joyeux Marcheurs</div>
+          <div class="header-text">Les Joyeux Marcheurs de Châteauneuf-le-Rouge</div>
         </div>
         <div class="content">
           <p class="h1">Nouvelle Adhésion à Valider</p>
           <p style="color: #475569; line-height: 1.5;">
-            Le profil de <strong>${displayName}</strong> a complété son profil.<br>
+            Le profil de <strong>${record.display_name || 'Utilisateur'}</strong> a été complété par l'utilisateur.<br>
             Il attend votre validation.
           </p>
           
@@ -103,7 +110,7 @@ serve(async (req) => {
         </div>
         <div class="footer">
           Ceci est un message automatique.<br>
-          © ${new Date().getFullYear()} Joyeux marcheurs de Châteauneuf-le-rouge<br>
+          © ${new Date().getFullYear()} Les Joyeux Marcheurs de Châteauneuf-le-rouge<br>
           <span style="color: #cbd5e1; font-size: 10px;">ID: ${Date.now().toString(36)}</span>
         </div>
       </div>
@@ -111,46 +118,34 @@ serve(async (req) => {
     </html>
     `;
 
-    // Use SENDER_EMAIL if set, otherwise default to ADMIN_EMAIL (which is likely verified)
-    const senderEmail = Deno.env.get("SENDER_EMAIL") || adminEmail;
-
-    // Call Brevo API
-    const response = await fetch("https://api.brevo.com/v3/smtp/email", {
+    // Resend API Call
+    const res = await fetch("https://api.resend.com/emails", {
       method: "POST",
       headers: {
-        "accept": "application/json",
-        "api-key": brevoApiKey,
-        "content-type": "application/json",
+        "Content-Type": "application/json",
+        "Authorization": `Bearer ${resendApiKey}`,
       },
       body: JSON.stringify({
-        sender: { name: "Les Joyeux Marcheurs", email: senderEmail },
-        to: [{ email: adminEmail }],
-        subject: `✅ Profil complété : ${displayName}`,
-        htmlContent: htmlContent,
+        from: `${resendFromName} <${resendFromEmail}>`,
+        to: adminEmails,
+        subject: `✅ Profil complété : ${record.display_name || record.email}`,
+        html: htmlContent,
       }),
     });
 
-    if (!response.ok) {
-      const errorData = await response.json();
-      console.error("Brevo Error:", errorData);
-      return new Response(JSON.stringify({ error: errorData }), {
-        status: 500,
-        headers: { "Content-Type": "application/json" },
-      });
+    if (!res.ok) {
+      const error = await res.text();
+      console.error("Resend API Error:", error);
+      return new Response(JSON.stringify({ error }), { status: 500 });
     }
 
-    const data = await response.json();
-    console.log("Email Sent Successfully:", data);
-    return new Response(JSON.stringify({ message: "Email sent", data }), {
-      status: 200,
-      headers: { "Content-Type": "application/json" },
-    });
+    const data = await res.json();
+    console.log("Email sent successfully:", data);
+
+    return new Response(JSON.stringify(data), { status: 200, headers: { "Content-Type": "application/json" } });
 
   } catch (err) {
     console.error("Function Error:", err);
-    return new Response(JSON.stringify({ error: err.message }), {
-      status: 500,
-      headers: { "Content-Type": "application/json" },
-    });
+    return new Response(JSON.stringify({ error: err.message }), { status: 500, headers: { "Content-Type": "application/json" } });
   }
 });

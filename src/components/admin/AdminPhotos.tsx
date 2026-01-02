@@ -1,7 +1,8 @@
 import { useEffect, useState } from 'react'
 import { motion, AnimatePresence } from 'framer-motion'
-import { Image, Trash2, MapPin, User, AlertTriangle, Loader } from 'lucide-react'
+import { Image, Trash2, MapPin, User, AlertTriangle } from 'lucide-react'
 import { AdminLayout } from './AdminLayout'
+import { AdminLoader } from './AdminLoader'
 import { supabase } from '@/lib/supabase'
 
 export function AdminPhotos() {
@@ -86,7 +87,7 @@ export function AdminPhotos() {
         return (
             <AdminLayout>
                 <div className="flex items-center justify-center h-96">
-                    <Loader className="w-8 h-8 animate-spin text-blue-600" />
+                    <AdminLoader />
                 </div>
             </AdminLayout>
         )

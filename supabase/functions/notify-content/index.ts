@@ -1,14 +1,13 @@
 import { serve } from "https://deno.land/std@0.168.0/http/server.ts";
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
 
-const brevoApiKey = Deno.env.get("BREVO_API_KEY")?.trim();
-const adminEmail = Deno.env.get("ADMIN_EMAIL")?.trim();
-const senderEmail = Deno.env.get("SENDER_EMAIL")?.trim() || adminEmail;
+const resendApiKey = Deno.env.get("RESEND_API_KEY");
+const resendFromEmail = Deno.env.get("RESEND_FROM_EMAIL") || "no-reply@nazarian.ovh";
+const resendFromName = Deno.env.get("RESEND_FROM_NAME") || "Les Joyeux Marcheurs";
 const siteUrl = Deno.env.get("SITE_URL")?.replace(/\/$/, "") ?? "http://localhost:5173";
 const supabaseUrl = Deno.env.get("SUPABASE_URL");
 const supabaseServiceKey = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY");
 
-// Initialize Supabase Client (if keys are present)
 const supabase = (supabaseUrl && supabaseServiceKey)
   ? createClient(supabaseUrl, supabaseServiceKey)
   : null;
@@ -18,26 +17,41 @@ serve(async (req) => {
 
   try {
     const payload = await req.json();
-    const { table, type, record, old_record, schema } = payload;
+    const { table, type, record, old_record } = payload;
 
-    // Safety checks
-    if (!brevoApiKey || !adminEmail) {
-      console.error("Missing config: BREVO_API_KEY or ADMIN_EMAIL");
-      return new Response("Config Error", { status: 500 });
+    if (!resendApiKey) {
+      console.error("Config Error: RESEND_API_KEY missing");
+      return new Response("Config Error: RESEND_API_KEY missing", { status: 500 });
     }
 
     if (!supabase) {
-      console.error("Missing config: SUPABASE_URL or SUPABASE_SERVICE_ROLE_KEY");
-      return new Response("Config Error: Database access required", { status: 500 });
+      console.error("Config Error: Supabase credentials missing");
+      return new Response("Config Error: DB access required", { status: 500 });
     }
 
-    console.log(`Event received: ${type} on ${table}`);
+    // FETCH ADMINS DYNAMICALLY (Common requirement)
+    // We fetch them once here to use in all 'Admin Notice' cases
+    const { data: adminsData, error: adminError } = await supabase
+      .from('profiles')
+      .select('email')
+      .eq('role', 'admin');
+
+    // Default to empty if error, handled later if needed
+    const adminEmails = adminsData?.map(a => a.email).filter(Boolean) as string[] || [];
+
+    if (adminEmails.length === 0) {
+      console.warn("Warning: No admins found in database.");
+    }
 
     let subject = "";
     let title = "";
     let message = "";
     let detailsHtml = "";
-    let recipientsPayload: any = null;
+
+    // Recipients Config
+    // By default send to admins. Broadcast case will override.
+    let toRecipients: string[] = adminEmails;
+    let bccRecipients: string[] = [];
 
     // ----------------------------------------------------
     // CASE 1: HIKE EVENTS (INSERT OR UPDATE OR DELETE)
@@ -94,7 +108,7 @@ serve(async (req) => {
           console.log("Fetching approved members for broadcast...");
           const { data: members, error: membersError } = await supabase
             .from("profiles")
-            .select("email, role, approved")
+            .select("email")
             .eq("approved", true)
             .not("email", "is", null);
 
@@ -102,23 +116,17 @@ serve(async (req) => {
             console.error("Error fetching members:", membersError);
           } else if (members) {
             console.log(`Found ${members.length} approved members.`);
-            // Debug: Log all found emails to check for missing ones
-            console.log("Member emails found:", members.map(m => `${m.email} (${m.role})`).join(", "));
+            bccRecipients = members.map(m => m.email).filter(Boolean) as string[];
 
-            const memberEmails = members.map(m => ({ email: m.email }));
-            recipientsPayload = {
-              sender: { name: "Les Joyeux Marcheurs", email: senderEmail },
-              to: [{ email: senderEmail }], // Send to sender (admin) as primary to hide BCC list
-              bcc: memberEmails,
-              subject: subject,
-              htmlContent: null // Will be filled below
-            };
+            // For broadcast, 'to' can be just the sender or info@... to hide recipients
+            // We use RESEND_FROM_EMAIL as 'to', and everyone else in 'bcc'
+            toRecipients = [resendFromEmail];
           }
         } else if (isUnpublished) {
           // --- CASE B: ADMIN NOTICE (Published -> Draft) ---
           subject = `⚠️ Rando Dépubliée : ${record.title}`;
           title = "Rando Remise en Brouillon";
-          message = `La randonnée "<strong>${record.title}</strong>" a été retirée de la publication (remise en brouillon) par <strong>${creatorName}</strong>.`;
+          message = `La randonnée "<strong>${record.title}</strong>" a été retirée du site (remise en brouillon) par <strong>${creatorName}</strong>.`;
 
         } else if (isPublished && wasPublished) {
           // --- CASE C: ADMIN NOTICE (Published -> Published) ---
@@ -130,8 +138,8 @@ serve(async (req) => {
         } else {
           // --- CASE D: ADMIN NOTICE (Draft -> Draft) ---
           subject = `📝 Mise à jour Rando (Brouillon) : ${record.title}`;
-          title = "Randonnée Modifiée (Brouillon)";
-          message = `<strong>${creatorName}</strong> a modifié le brouillon : "<strong>${record.title}</strong>".`;
+          title = "Randonnée ajoutée (Brouillon)";
+          message = `<strong>${creatorName}</strong> a ajouté le brouillon : "<strong>${record.title}</strong>".`;
         }
 
         detailsHtml = `
@@ -144,10 +152,9 @@ serve(async (req) => {
       }
     }
     // ----------------------------------------------------
-    // CASE 2: NEW PHOTO & CASE 3 DELETED (No changes needed, they use default admin target)
+    // CASE 2: NEW PHOTO & CASE 3 DELETED
     // ----------------------------------------------------
     else if (table === "photos" && type === "INSERT") {
-      // ... (Keep existing logic)
       subject = `📸 Nouvelle Photo ajoutée`;
       title = "Nouvelle Photo";
 
@@ -159,7 +166,7 @@ serve(async (req) => {
       }
 
       // Fetch Hike
-      let hikeTitle = "une randonnée";
+      let hikeTitle = "Une randonnée";
       if (record.hike_id) {
         const { data: hike } = await supabase.from("hikes").select("title").eq("id", record.hike_id).single();
         if (hike) hikeTitle = hike.title;
@@ -186,7 +193,7 @@ serve(async (req) => {
       }
 
       // Fetch Hike (might create error if hike deleted? We handle null)
-      let hikeTitle = "une randonnée";
+      let hikeTitle = "Une randonnée";
       if (old_record && old_record.hike_id) {
         const { data: hike } = await supabase.from("hikes").select("title").eq("id", old_record.hike_id).single();
         if (hike) hikeTitle = hike.title;
@@ -201,10 +208,6 @@ serve(async (req) => {
     else {
       return new Response("Skipped (unhandled event)", { status: 200 });
     }
-
-    // ----------------------------------------------------
-    // SEND EMAIL
-    // ----------------------------------------------------
 
     const htmlContent = `
     <!DOCTYPE html>
@@ -241,7 +244,7 @@ serve(async (req) => {
       <div class="container">
         <div class="header">
           <div class="header-overlay"></div>
-          <div class="header-text">Les Joyeux Marcheurs</div>
+          <div class="header-text">Les Joyeux Marcheurs de Châteauneuf-le-Rouge</div>
         </div>
         <div class="content">
           <p class="h1">${title}</p>
@@ -259,43 +262,43 @@ serve(async (req) => {
         </div>
         <div class="footer">
           Ceci est un message automatique.<br>
-          © ${new Date().getFullYear()} Joyeux marcheurs de Châteauneuf-le-rouge<br>
-          <span style="color: #cbd5e1; font-size: 10px;">ID: ${Date.now().toString(36)}</span>
+          © ${new Date().getFullYear()} Les Joyeux Marcheurs de Châteauneuf-le-rouge<br>
         </div>
       </div>
     </body>
     </html>
     `;
 
-    // Construct final payload
-    const finalPayload = recipientsPayload ? {
-      ...recipientsPayload,
-      htmlContent: htmlContent // Inject content
-    } : {
-      sender: { name: "Les Joyeux Marcheurs", email: senderEmail },
-      to: [{ email: adminEmail }],
+    // Resend Payload
+    const emailPayload: any = {
+      from: `${resendFromName} <${resendFromEmail}>`,
+      to: toRecipients,
       subject: subject,
-      htmlContent: htmlContent,
+      html: htmlContent,
     };
 
-    // Send to Admin
-    const response = await fetch("https://api.brevo.com/v3/smtp/email", {
-      method: "POST",
-      headers: {
-        "accept": "application/json",
-        "api-key": brevoApiKey,
-        "content-type": "application/json",
-      },
-      body: JSON.stringify(finalPayload),
-    });
-
-    if (!response.ok) {
-      const err = await response.json();
-      console.error("Brevo Error:", err);
-      return new Response("Brevo Error", { status: 500 });
+    if (bccRecipients.length > 0) {
+      emailPayload.bcc = bccRecipients;
     }
 
-    return new Response("Email sent", { status: 200 });
+    // Call Resend
+    const res = await fetch("https://api.resend.com/emails", {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+        "Authorization": `Bearer ${resendApiKey}`,
+      },
+      body: JSON.stringify(emailPayload),
+    });
+
+    if (!res.ok) {
+      const error = await res.text();
+      console.error("Resend API Error:", error);
+      return new Response(JSON.stringify({ error }), { status: 500 });
+    }
+
+    const data = await res.json();
+    return new Response(JSON.stringify(data), { status: 200, headers: { "Content-Type": "application/json" } });
 
   } catch (err: any) {
     console.error("Critical Error", err);

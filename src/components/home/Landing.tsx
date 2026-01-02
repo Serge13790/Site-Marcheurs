@@ -72,7 +72,7 @@ export function Landing() {
             <footer className="absolute bottom-0 w-full p-4 text-center text-white/60 text-xs z-10 flex flex-col md:flex-row gap-2 md:gap-8 justify-center items-center">
                 <p>Copyright © {new Date().getFullYear()} Joyeux marcheurs de Châteauneuf-le-rouge - Tous droits réservés</p>
                 <a href="/mentions-legales" className="hover:text-white transition-colors underline">Mentions Légales</a>
-                <a href="mailto:contact@example.com" className="hover:text-white transition-colors">Contact Webmestre</a>
+                <a href="mailto:joyeuxmarcheurs@nazarian.ovh" className="hover:text-white transition-colors">Contact Webmestre</a>
             </footer>
 
             {/* Login Modal */}

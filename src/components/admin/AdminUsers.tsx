@@ -4,6 +4,7 @@ import { motion, AnimatePresence } from 'framer-motion'
 import { Search, CheckCircle, XCircle, Shield, User, X, MapPin, Phone, Calendar, Mail } from 'lucide-react'
 import { supabase } from '@/lib/supabase'
 import { AdminLayout } from './AdminLayout'
+import { AdminLoader } from './AdminLoader'
 import { useAuth } from '@/contexts/AuthContext'
 
 interface Profile {
@@ -129,8 +130,8 @@ export function AdminUsers() {
 
     return (
         <AdminLayout>
-            <div className="max-w-6xl mx-auto">
-                <div className="mb-8">
+            <div className="w-full">
+                <div className="mb-8 pl-1">
                     <h1 className="text-3xl font-bold text-slate-800 dark:text-white mb-2 font-serif">Gestion des Utilisateurs</h1>
                     <p className="text-slate-600 dark:text-slate-400">Validez les nouveaux comptes et gérez les rôles.</p>
                 </div>
@@ -298,8 +299,8 @@ export function AdminUsers() {
                     </div>
 
                     {loading ? (
-                        <div className="p-12 text-center text-slate-500 dark:text-slate-400">
-                            Chargement des utilisateurs...
+                        <div className="p-12 flex justify-center">
+                            <AdminLoader />
                         </div>
                     ) : filteredProfiles.length === 0 && (
                         <div className="p-12 text-center text-slate-500 dark:text-slate-400">

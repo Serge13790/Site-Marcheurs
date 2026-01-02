@@ -1,6 +1,7 @@
 import { useState, useEffect } from 'react'
-import { Plus, Search, Calendar, MapPin, X, Trash, Edit, Mountain, Upload, Loader2, ChevronLeft, ChevronRight, FileText } from 'lucide-react'
+import { Plus, Search, Calendar, MapPin, X, Trash, Edit, Mountain, Upload, ChevronLeft, ChevronRight, FileText, AlertTriangle, Loader2 } from 'lucide-react'
 import { AdminLayout } from './AdminLayout'
+import { AdminLoader } from './AdminLoader'
 import { motion, AnimatePresence } from 'framer-motion'
 import { cn } from '@/lib/utils'
 import { supabase } from '@/lib/supabase'
@@ -52,8 +53,10 @@ export function AdminHikes() {
 
     // Hike Photos Management State
     const [hikePhotos, setHikePhotos] = useState<Photo[]>([])
+
     const [loadingHikePhotos, setLoadingHikePhotos] = useState(false)
     const [uploading, setUploading] = useState(false)
+    const [photoToDelete, setPhotoToDelete] = useState<any | null>(null)
 
     // Fetch Hikes
     useEffect(() => {
@@ -181,8 +184,6 @@ export function AdminHikes() {
     }
 
     const handleDeletePhoto = async (photoId: string, storagePath: string) => {
-        if (!confirm("Supprimer cette photo ?")) return
-
         try {
             // 1. Delete from Storage
             const { error: storageError } = await supabase.storage.from('photos').remove([storagePath])
@@ -346,7 +347,7 @@ export function AdminHikes() {
                 {/* List */}
                 <div className="divide-y divide-slate-200 dark:divide-white/5">
                     {loading ? (
-                        <div className="p-8 text-center text-slate-500">Chargement...</div>
+                        <div className="p-8 flex justify-center"><AdminLoader /></div>
                     ) : filteredHikes.length === 0 ? (
                         <div className="p-8 text-center text-slate-500">Aucune randonnée trouvée.</div>
                     ) : (
@@ -733,7 +734,7 @@ export function AdminHikes() {
 
                                                     <div className="grid grid-cols-2 md:grid-cols-4 lg:grid-cols-5 gap-3">
                                                         {loadingHikePhotos ? (
-                                                            <p className="text-sm text-slate-500">Chargement...</p>
+                                                            <div className="col-span-full flex justify-center py-4"><AdminLoader /></div>
                                                         ) : hikePhotos.length === 0 ? (
                                                             <p className="text-sm text-slate-500 col-span-full italic py-8 text-center bg-slate-50 dark:bg-slate-800/50 rounded-lg border border-dashed border-slate-200">
                                                                 Aucune photo uploadée pour cette randonnée.
@@ -753,7 +754,7 @@ export function AdminHikes() {
                                                                         </button>
                                                                         <button
                                                                             type="button"
-                                                                            onClick={() => handleDeletePhoto(photo.id, photo.storage_path)}
+                                                                            onClick={() => setPhotoToDelete(photo)}
                                                                             className="p-2 text-white hover:text-red-400 transition-colors"
                                                                             title="Supprimer la photo"
                                                                         >
@@ -875,6 +876,63 @@ export function AdminHikes() {
                     </div>
                 )}
             </AnimatePresence>
-        </AdminLayout>
+
+
+            {/* DELETE MODAL (Consistent with AdminPhotos) */}
+            {
+                photoToDelete && (
+                    <div className="fixed inset-0 z-[70] flex items-center justify-center p-4">
+                        {/* Backdrop */}
+                        <div
+                            className="absolute inset-0 bg-black/60 backdrop-blur-sm"
+                            onClick={() => setPhotoToDelete(null)}
+                        ></div>
+
+                        {/* Modal Content */}
+                        <motion.div
+                            initial={{ opacity: 0, scale: 0.95 }}
+                            animate={{ opacity: 1, scale: 1 }}
+                            exit={{ opacity: 0, scale: 0.95 }}
+                            className="bg-white dark:bg-slate-900 rounded-2xl shadow-xl max-w-sm w-full relative z-10 overflow-hidden"
+                        >
+                            <div className="p-6 text-center">
+                                <div className="w-12 h-12 bg-red-100 dark:bg-red-900/30 text-red-600 rounded-full flex items-center justify-center mx-auto mb-4">
+                                    <AlertTriangle className="w-6 h-6" />
+                                </div>
+                                <h3 className="text-lg font-bold text-slate-900 dark:text-white mb-2">Supprimer cette photo ?</h3>
+                                <p className="text-sm text-slate-500 dark:text-slate-400 mb-6">
+                                    Cette action est irréversible et retirera la photo de la galerie.
+                                </p>
+
+                                <div className="flex gap-3">
+                                    <button
+                                        onClick={() => setPhotoToDelete(null)}
+                                        className="flex-1 py-2.5 px-4 bg-slate-100 dark:bg-slate-800 text-slate-700 dark:text-slate-300 font-medium rounded-xl hover:bg-slate-200 dark:hover:bg-slate-700 transition-colors"
+                                    >
+                                        Annuler
+                                    </button>
+                                    <button
+                                        onClick={() => {
+                                            handleDeletePhoto(photoToDelete.id, photoToDelete.storage_path);
+                                            setPhotoToDelete(null);
+                                        }}
+                                        className="flex-1 py-2.5 px-4 bg-red-600 text-white font-medium rounded-xl hover:bg-red-700 transition-colors shadow-lg shadow-red-600/20"
+                                    >
+                                        Supprimer
+                                    </button>
+                                </div>
+                            </div>
+                            <div className="bg-slate-50 dark:bg-slate-950/50 p-4 border-t border-slate-100 dark:border-slate-800 flex justify-center">
+                                <img
+                                    src={(photoToDelete as any).publicUrl}
+                                    alt="Thumbnail"
+                                    className="h-16 w-16 object-cover rounded-lg border border-slate-200 dark:border-slate-700 opacity-60"
+                                />
+                            </div>
+                        </motion.div>
+                    </div>
+                )
+            }
+        </AdminLayout >
     )
 }

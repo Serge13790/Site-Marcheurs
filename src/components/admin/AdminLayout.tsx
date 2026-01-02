@@ -1,6 +1,7 @@
 import { useState, useEffect } from 'react'
 import { motion } from 'framer-motion'
-import { LayoutDashboard, Map, Users, LogOut, Menu, X, Mountain, Loader2, Sun, Moon, Monitor, ArrowLeft, Image } from 'lucide-react'
+import { LayoutDashboard, Map, Users, LogOut, Menu, X, Mountain, Sun, Moon, Monitor, ArrowLeft, Image } from 'lucide-react'
+import { AdminLoader } from './AdminLoader'
 import { cn } from '@/lib/utils'
 import { useNavigate, useLocation } from 'react-router-dom'
 import { useAuth } from '@/contexts/AuthContext'
@@ -30,7 +31,7 @@ export function AdminLayout({ children }: AdminLayoutProps) {
     if (loading) {
         return (
             <div className="min-h-screen flex items-center justify-center bg-slate-50 dark:bg-slate-950">
-                <Loader2 className="w-8 h-8 text-blue-600 animate-spin" />
+                <AdminLoader />
             </div>
         )
     }

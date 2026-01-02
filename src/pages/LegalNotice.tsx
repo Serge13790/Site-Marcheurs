@@ -18,8 +18,8 @@ export function LegalNotice() {
                         </p>
                         <ul className="list-disc ml-5 mt-2 space-y-1">
                             <li><strong>Siège social :</strong> Mairie de Châteauneuf-le-Rouge, 13790 Châteauneuf-le-Rouge</li>
-                            <li><strong>Email :</strong> contact@example.com</li>
-                            <li><strong>Téléphone :</strong> 04 XX XX XX XX</li>
+                            <li><strong>Email :</strong> joyeuxmarcheurs@nazarian.ovh</li>
+                            <li><strong>Téléphone :</strong> 06 01 94 18 87</li>
                         </ul>
                     </section>
 

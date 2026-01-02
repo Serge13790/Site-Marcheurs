@@ -1,42 +1,34 @@
 import { serve } from "https://deno.land/std@0.168.0/http/server.ts";
 
-const brevoApiKey = Deno.env.get("BREVO_API_KEY")?.trim();
-const adminEmail = Deno.env.get("ADMIN_EMAIL")?.trim();
-const senderEmail = Deno.env.get("SENDER_EMAIL")?.trim() || adminEmail;
+const resendApiKey = Deno.env.get("RESEND_API_KEY");
+const resendFromEmail = Deno.env.get("RESEND_FROM_EMAIL") || "no-reply@nazarian.ovh";
+const resendFromName = Deno.env.get("RESEND_FROM_NAME") || "Les Joyeux Marcheurs";
 const siteUrl = Deno.env.get("SITE_URL")?.replace(/\/$/, "") ?? "http://localhost:5173";
 
 serve(async (req) => {
-    if (req.method !== "POST") {
-        return new Response("Method Not Allowed", { status: 405 });
+  if (req.method !== "POST") return new Response("Method Not Allowed", { status: 405 });
+
+  try {
+    const payload = await req.json();
+    const record = payload.record;
+    const oldRecord = payload.old_record;
+
+    if (!record || !record.email) return new Response("No user record", { status: 400 });
+
+    const wasApproved = oldRecord?.approved === true;
+    const isApproved = record.approved === true;
+
+    if (!isApproved) return new Response("Skipped (Not approved)", { status: 200 });
+    if (wasApproved && isApproved) return new Response("Skipped (Already approved)", { status: 200 });
+
+    if (!resendApiKey) {
+      console.error("Config Error: RESEND_API_KEY missing");
+      return new Response("Config Error: RESEND_API_KEY missing", { status: 500 });
     }
 
-    try {
-        const payload = await req.json();
-        const record = payload.record;
-        const oldRecord = payload.old_record;
+    const displayName = [record.first_name, record.last_name].filter(Boolean).join(" ") || record.display_name || "Membre";
 
-        if (!record || !record.email) return new Response("No user record", { status: 400 });
-
-        // CHECK: Only send if approved changed from false to true
-        const wasApproved = oldRecord?.approved === true;
-        const isApproved = record.approved === true;
-
-        console.log(`Approval Check: Old=${oldRecord?.approved}, New=${record.approved}, User=${record.email}`);
-
-        if (!isApproved) {
-            return new Response("Skipped (Not approved)", { status: 200 });
-        }
-
-        if (wasApproved && isApproved) {
-            return new Response("Skipped (Already approved)", { status: 200 });
-        }
-
-        if (!brevoApiKey) return new Response("Config Error: BREVO_API_KEY missing", { status: 500 });
-
-        const fullName = [record.first_name, record.last_name].filter(Boolean).join(" ");
-        const displayName = fullName || record.display_name || record.email;
-
-        const htmlContent = `
+    const htmlContent = `
     <!DOCTYPE html>
     <html>
     <head>
@@ -68,7 +60,7 @@ serve(async (req) => {
       <div class="container">
         <div class="header">
           <div class="header-overlay"></div>
-          <div class="header-text">Les Joyeux Marcheurs</div>
+          <div class="header-text">Les Joyeux Marcheurs de Châteauneuf-le-Rouge</div>
         </div>
         <div class="content">
           <p class="h1">Félicitations ${displayName} !</p>
@@ -84,7 +76,7 @@ serve(async (req) => {
         </div>
         <div class="footer">
           Ceci est un message automatique.<br>
-          © ${new Date().getFullYear()} Joyeux marcheurs de Châteauneuf-le-rouge<br>
+          © ${new Date().getFullYear()} Les Joyeux marcheurs de Châteauneuf-le-rouge<br>
           <span style="color: #cbd5e1; font-size: 10px;">ID: ${Date.now().toString(36)}</span>
         </div>
       </div>
@@ -92,38 +84,32 @@ serve(async (req) => {
     </html>
     `;
 
-        // Call Brevo API
-        const response = await fetch("https://api.brevo.com/v3/smtp/email", {
-            method: "POST",
-            headers: {
-                "accept": "application/json",
-                "api-key": brevoApiKey,
-                "content-type": "application/json",
-            },
-            body: JSON.stringify({
-                sender: { name: "Les Joyeux Marcheurs", email: senderEmail },
-                to: [{ email: record.email }],
-                subject: `🎉 Compte validé : Bienvenue chez les Joyeux Marcheurs !`,
-                htmlContent: htmlContent,
-            }),
-        });
+    // Resend API Call
+    const res = await fetch("https://api.resend.com/emails", {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+        "Authorization": `Bearer ${resendApiKey}`,
+      },
+      body: JSON.stringify({
+        from: `${resendFromName} <${resendFromEmail}>`,
+        to: [record.email],
+        subject: `🎉 Compte validé : Bienvenue !`,
+        html: htmlContent,
+      }),
+    });
 
-        if (!response.ok) {
-            const errorData = await response.json();
-            console.error("Brevo Error:", errorData);
-            return new Response(JSON.stringify({ error: errorData }), { status: 500, headers: { "Content-Type": "application/json" } });
-        }
-
-        const data = await response.json();
-        console.log("Approval Email Sent:", data);
-
-        return new Response(JSON.stringify({ message: "Email sent", data }), {
-            status: 200,
-            headers: { "Content-Type": "application/json" },
-        });
-
-    } catch (err) {
-        console.error("Function Error:", err);
-        return new Response(JSON.stringify({ error: err.message }), { status: 500, headers: { "Content-Type": "application/json" } });
+    if (!res.ok) {
+      const error = await res.text();
+      console.error("Resend API Error:", error);
+      return new Response(JSON.stringify({ error }), { status: 500 });
     }
+
+    const data = await res.json();
+    return new Response(JSON.stringify(data), { status: 200, headers: { "Content-Type": "application/json" } });
+
+  } catch (err) {
+    console.error("Function Error:", err);
+    return new Response(JSON.stringify({ error: err.message }), { status: 500, headers: { "Content-Type": "application/json" } });
+  }
 });
